@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import android.Manifest;
+import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Build;
@@ -14,12 +15,19 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResponse;
+import com.google.android.gms.location.LocationSettingsStatusCodes;
+import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -56,8 +64,44 @@ public class MainActivity extends AppCompatActivity {
         locationRequest.setInterval(1000 * DEFAULT_UPDATE_INTERVAL);
         locationRequest.setFastestInterval(1000 * FAST_UPDATE_INTERVAL);
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder().addLocationRequest(locationRequest);
 
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(MainActivity.this);
+        Task<LocationSettingsResponse> result = LocationServices.getSettingsClient(MainActivity.this).checkLocationSettings(builder.build());
+        result.addOnCompleteListener(new OnCompleteListener<LocationSettingsResponse>() {
+            @Override
+            public void onComplete(@NonNull Task<LocationSettingsResponse> task) {
+                try {
+                    LocationSettingsResponse response = task.getResult(ApiException.class);
+                    // All location settings are satisfied. The client can initialize location
+                    // requests here.
+                    fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(MainActivity.this);
+                } catch (ApiException exception) {
+                    switch (exception.getStatusCode()) {
+                        case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                            // Location settings are not satisfied. But could be fixed by showing the
+                            // user a dialog.
+                            try {
+                                // Cast to a resolvable exception.
+                                ResolvableApiException resolvable = (ResolvableApiException) exception;
+                                // Show the dialog by calling startResolutionForResult(),
+                                // and check the result in onActivityResult().
+                                resolvable.startResolutionForResult(MainActivity.this, LocationRequest.PRIORITY_HIGH_ACCURACY);
+                                fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(MainActivity.this);
+                            } catch (IntentSender.SendIntentException e) {
+                                // Ignore the error.
+                            } catch (ClassCastException e) {
+                                // Ignore, should be an impossible error.
+                            }
+                            break;
+                        case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                            // Location settings are not satisfied. However, we have no way to fix the
+                            // settings so we won't show the dialog.
+                            break;
+                    }
+                }
+            }
+        });
+
 
         locationCallBack = new LocationCallback() {
 
@@ -72,11 +116,10 @@ public class MainActivity extends AppCompatActivity {
         sw_gps.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if(sw_gps.isChecked()) {
+                if (sw_gps.isChecked()) {
                     locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
                     tv_sensor.setText(("Using GPS"));
-                }
-                else{
+                } else {
                     locationRequest.setPriority(LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
                     tv_sensor.setText("Cell Tower + wifi");
                 }
@@ -87,15 +130,14 @@ public class MainActivity extends AppCompatActivity {
         sw_locationupdates.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if(sw_locationupdates.isChecked()){
+                if (sw_locationupdates.isChecked()) {
                     startLocationUpdates();
-                }
-                else{
+                } else {
                     stopLocationUpdates();
                 }
             }
         });
-        //updateGPS();
+
         // end of on Create method
     }
 
@@ -110,6 +152,16 @@ public class MainActivity extends AppCompatActivity {
 
     private void startLocationUpdates() {
         tv_updates.setText("on");
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
         fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallBack, null);
     }
 
@@ -120,7 +172,7 @@ public class MainActivity extends AppCompatActivity {
         {
             case PERMISSIONS_FINE_LOCATION:
                 if(grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    updateGPS();
+                    //updateGPS();
                 }
                 else {
                     Toast.makeText(this, "This app requires permission", Toast.LENGTH_SHORT);
@@ -129,7 +181,7 @@ public class MainActivity extends AppCompatActivity {
                 break;
         }
     }
-    private void updateGPS() {
+    /*private void updateGPS() {
         //get user permission
         //get the current location
         //update the UI
@@ -148,7 +200,7 @@ public class MainActivity extends AppCompatActivity {
                 requestPermissions(new String[] {Manifest.permission.ACCESS_FINE_LOCATION}, PERMISSIONS_FINE_LOCATION);
             }
         }
-    }
+    }*/
 
     private void updateUIValues(Location location) {
         // update all text
